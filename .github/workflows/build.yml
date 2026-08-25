@@ -1,4 +1,4 @@
-name: Build Android APK
+ name: Build Android APK
 
 on:
   push:
@@ -23,7 +23,7 @@ jobs:
       run: |
         echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.11.1-bin.zip" > gradle/wrapper/gradle-wrapper.properties
 
-    - name: Automatically Patch Project Structure, Resources, and Dependencies
+    - name: Automatically Patch Project Structure, Resources, and Repositories
       run: |
         python3 - << 'EOF'
         import glob
@@ -51,10 +51,15 @@ jobs:
             if "dynamicFeatures" in content:
                 content = re.sub(r'dynamicFeatures\s*=\s*\[[^\]]*\]', '', content)
 
-            # Remove dead/unreachable artifactory repositories that fail protoc downloads
+            # Remove dead/unauthorized spring repositories causing 401 errors
+            content = re.sub(r'maven\s*\{\s*url\s+[\'"]https://repo\.spring\.io[^\'"]*[\'"]\s*\}', '', content)
             content = re.sub(r'maven\s*\{\s*url\s+[\'"]https://artifactory\.appodeal\.com[^\'"]*[\'"]\s*\}', '', content)
             
-            # Upgrade outdated protobuf compiler version to a stable version available on Maven Central
+            # Ensure JitPack repository is included so me.weishu packages can resolve
+            if "repositories" in content and "jitpack.io" not in content:
+                content = content.replace("repositories {", "repositories {\n        maven { url 'https://jitpack.io' }")
+
+            # Upgrade outdated protobuf compiler version if present
             content = content.replace("3.0.0-alpha-3", "3.21.7")
 
             with open(filepath, "w", encoding="utf-8") as f:
@@ -89,7 +94,6 @@ jobs:
             if new_content != content:
                 with open(filepath, "w", encoding="utf-8") as f:
                     f.write(new_content)
-                print(f"Fixed iconSize dimensions in: {filepath}")
 
         print("Successfully patched project configuration automatically.")
         EOF
@@ -105,4 +109,4 @@ jobs:
       with:
         name: built-apks
         path: '**/*.apk'
-        
+
