@@ -23,7 +23,7 @@ jobs:
       run: |
         echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.11.1-bin.zip" > gradle/wrapper/gradle-wrapper.properties
 
-    - name: Automatically Patch Project Structure and Resources
+    - name: Automatically Patch Project Structure, Resources, and Dependencies
       run: |
         python3 - << 'EOF'
         import glob
@@ -38,17 +38,24 @@ jobs:
                 with open(filepath, "w", encoding="utf-8") as f:
                     f.write(new_content)
 
-        # 2. Fix build.gradle files across modules
-        for filepath in glob.glob("**/build.gradle", recursive=True):
+        # 2. Fix build.gradle and settings.gradle files across modules
+        for filepath in glob.glob("**/build.gradle", recursive=True) + glob.glob("**/settings.gradle", recursive=True):
             with open(filepath, "r", encoding="utf-8") as f:
                 content = f.read()
             
+            # Normalize submodules to library plugins
             if "app/build.gradle" not in filepath and not filepath.endswith("app/build.gradle"):
                 content = content.replace("com.android.application", "com.android.library")
                 content = re.sub(r'applicationId(Suffix)?\s+[\'"][^\'"]*[\'"]', '', content)
 
             if "dynamicFeatures" in content:
                 content = re.sub(r'dynamicFeatures\s*=\s*\[[^\]]*\]', '', content)
+
+            # Remove dead/unreachable artifactory repositories that fail protoc downloads
+            content = re.sub(r'maven\s*\{\s*url\s+[\'"]https://artifactory\.appodeal\.com[^\'"]*[\'"]\s*\}', '', content)
+            
+            # Upgrade outdated protobuf compiler version to a stable version available on Maven Central
+            content = content.replace("3.0.0-alpha-3", "3.21.7")
 
             with open(filepath, "w", encoding="utf-8") as f:
                 f.write(content)
@@ -64,7 +71,6 @@ jobs:
                 )
                 with open(filepath, "w", encoding="utf-8") as f:
                     f.write(content)
-                print(f"Fixed string formatting in: {filepath}")
 
         # 4. Remove duplicate iconSize attribute definition causing resource collision
         for filepath in glob.glob("**/res/values/*.xml", recursive=True):
@@ -74,9 +80,18 @@ jobs:
                 content = re.sub(r'<attr\s+name=["\']iconSize["\'][^>]*/>', '', content)
                 with open(filepath, "w", encoding="utf-8") as f:
                     f.write(content)
-                print(f"Removed duplicate iconSize attr from: {filepath}")
 
-        print("Successfully patched project configuration and resources automatically.")
+        # 5. Fix missing 'dp' units in device_profiles.xml for iconSize attributes
+        for filepath in glob.glob("**/device_profiles.xml", recursive=True):
+            with open(filepath, "r", encoding="utf-8") as f:
+                content = f.read()
+            new_content = re.sub(r'iconSize="(\d+)"', r'iconSize="\1dp"', content)
+            if new_content != content:
+                with open(filepath, "w", encoding="utf-8") as f:
+                    f.write(new_content)
+                print(f"Fixed iconSize dimensions in: {filepath}")
+
+        print("Successfully patched project configuration automatically.")
         EOF
 
     - name: Grant execute permission for gradlew
