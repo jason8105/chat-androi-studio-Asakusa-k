@@ -23,6 +23,31 @@ jobs:
       run: |
         echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.11.1-bin.zip" > gradle/wrapper/gradle-wrapper.properties
 
+    - name: Automatically Patch Project for Modern AGP
+      run: |
+        python3 -c '
+        import glob, re
+        
+        # 1. Clean Manifests (remove obsolete package attributes)
+        for filepath in glob.glob("**/AndroidManifest*.xml", recursive=True):
+            with open(filepath, "r", encoding="utf-8") as f:
+                content = f.read()
+            if "package=" in content:
+                new_content = re.sub(r"\s*package=\"[^\"]*\"", "", content)
+                with open(filepath, "w", encoding="utf-8") as f:
+                    f.write(new_content)
+
+        # 2. Fix potential dynamic feature block conflicts in build.gradle files
+        for filepath in glob.glob("**/build.gradle", recursive=True):
+            with open(filepath, "r", encoding="utf-8") as f:
+                content = f.read()
+            if "dynamicFeatures" in content:
+                new_content = re.sub(r"dynamicFeatures\s*=\s*\[.*?\]", "", content)
+                with open(filepath, "w", encoding="utf-8") as f:
+                    f.write(new_content)
+        print("Successfully patched project configuration automatically.")
+        '
+
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
