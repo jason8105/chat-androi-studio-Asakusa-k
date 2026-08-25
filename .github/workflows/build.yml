@@ -23,7 +23,7 @@ jobs:
       run: |
         echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.11.1-bin.zip" > gradle/wrapper/gradle-wrapper.properties
 
-    - name: Automatically Patch Project Structure for AGP 8+
+    - name: Automatically Patch Project Structure and Resources
       run: |
         python3 - << 'EOF'
         import glob
@@ -43,20 +43,40 @@ jobs:
             with open(filepath, "r", encoding="utf-8") as f:
                 content = f.read()
             
-            # Normalize submodules to library plugins and strip conflicting properties
             if "app/build.gradle" not in filepath and not filepath.endswith("app/build.gradle"):
                 content = content.replace("com.android.application", "com.android.library")
-                # Strip out both applicationId and applicationIdSuffix to prevent library errors
                 content = re.sub(r'applicationId(Suffix)?\s+[\'"][^\'"]*[\'"]', '', content)
 
-            # Remove dynamicFeature conflicts safely
             if "dynamicFeatures" in content:
                 content = re.sub(r'dynamicFeatures\s*=\s*\[[^\]]*\]', '', content)
 
             with open(filepath, "w", encoding="utf-8") as f:
                 f.write(content)
 
-        print("Successfully patched project configuration automatically.")
+        # 3. Fix string formatting error in strings.xml
+        for filepath in glob.glob("**/strings.xml", recursive=True):
+            with open(filepath, "r", encoding="utf-8") as f:
+                content = f.read()
+            if 'name="multi_version_tips_content"' in content and 'formatted="false"' not in content:
+                content = content.replace(
+                    '<string name="multi_version_tips_content">',
+                    '<string name="multi_version_tips_content" formatted="false">'
+                )
+                with open(filepath, "w", encoding="utf-8") as f:
+                    f.write(content)
+                print(f"Fixed string formatting in: {filepath}")
+
+        # 4. Remove duplicate iconSize attribute definition causing resource collision
+        for filepath in glob.glob("**/res/values/*.xml", recursive=True):
+            with open(filepath, "r", encoding="utf-8") as f:
+                content = f.read()
+            if 'name="iconSize"' in content:
+                content = re.sub(r'<attr\s+name=["\']iconSize["\'][^>]*/>', '', content)
+                with open(filepath, "w", encoding="utf-8") as f:
+                    f.write(content)
+                print(f"Removed duplicate iconSize attr from: {filepath}")
+
+        print("Successfully patched project configuration and resources automatically.")
         EOF
 
     - name: Grant execute permission for gradlew
