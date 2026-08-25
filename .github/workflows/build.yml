@@ -23,11 +23,11 @@ jobs:
       run: |
         echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.11.1-bin.zip" > gradle/wrapper/gradle-wrapper.properties
 
-    - name: Automatically Patch Project for Modern AGP
+    - name: Automatically Patch Project Structure for AGP 8+
       run: |
         python3 -c '
         import glob, re
-        
+
         # 1. Clean Manifests (remove obsolete package attributes)
         for filepath in glob.glob("**/AndroidManifest*.xml", recursive=True):
             with open(filepath, "r", encoding="utf-8") as f:
@@ -37,14 +37,23 @@ jobs:
                 with open(filepath, "w", encoding="utf-8") as f:
                     f.write(new_content)
 
-        # 2. Fix potential dynamic feature block conflicts in build.gradle files
+        # 2. Fix build.gradle files across modules
         for filepath in glob.glob("**/build.gradle", recursive=True):
             with open(filepath, "r", encoding="utf-8") as f:
                 content = f.read()
+            
+            # Ensure submodules are treated as libraries rather than conflicting apps
+            if "/app/" not in filepath and not filepath.endswith("app/build.gradle"):
+                content = content.replace("com.android.application", "com.android.library")
+                content = re.sub(r"applicationId\s+[\"'].*?[\"']", "", content)
+
+            # Remove dynamicFeature conflicts
             if "dynamicFeatures" in content:
-                new_content = re.sub(r"dynamicFeatures\s*=\s*\[.*?\]", "", content)
-                with open(filepath, "w", encoding="utf-8") as f:
-                    f.write(new_content)
+                content = re.sub(r"dynamicFeatures\s*=\s*\[.*?\]", "", content)
+
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(content)
+
         print("Successfully patched project configuration automatically.")
         '
 
